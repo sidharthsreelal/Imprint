@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# Imprint runtime data
+chroma_db/
+index_cache.db
+errors.log
+config.json
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

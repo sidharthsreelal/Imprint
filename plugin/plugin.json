@@ -1,0 +1,12 @@
+{
+  "ID": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
+  "ActionKeyword": "im",
+  "Name": "Imprint",
+  "Description": "Semantic memory search — find any file by meaning, not just filename",
+  "Author": "Imprint",
+  "Version": "1.0.0",
+  "Language": "python",
+  "Website": "https://github.com/imprint-search",
+  "IcoPath": "icon.png",
+  "ExecuteFileName": "main.py"
+}
