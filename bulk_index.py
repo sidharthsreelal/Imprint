@@ -58,24 +58,24 @@ def bulk_index():
 
     if not watch_dirs:
         print()
-        print("  ╔══════════════════════════════════════════════════════╗")
-        print("  ║  No watch directories configured!                    ║")
-        print("  ║                                                      ║")
-        print("  ║  Add directories first:                              ║")
-        print("  ║    python config.py add \"C:\\Users\\You\\Pictures\" ║")
-        print("  ║    python config.py add \"D:\\Photos\"               ║")
-        print("  ╚══════════════════════════════════════════════════════╝")
+        print("  +------------------------------------------------------+ ")
+        print("  |  No watch directories configured!                    | ")
+        print("  |                                                      | ")
+        print("  |  Add directories first:                              | ")
+        print("  |    python config.py add \"C:\\Users\\You\\Pictures\" | ")
+        print("  |    python config.py add \"D:\\Photos\"               | ")
+        print("  +------------------------------------------------------+ ")
         print()
         sys.exit(1)
 
     print()
-    print("  ╔══════════════════════════════════════════╗")
-    print("  ║         IMPRINT — Bulk Indexer           ║")
-    print("  ╚══════════════════════════════════════════╝")
+    print("  +------------------------------------------+")
+    print("  |         IMPRINT - Bulk Indexer           |")
+    print("  +------------------------------------------+")
     print()
     print("  Scanning directories...")
     for d in watch_dirs:
-        print(f"    • {d}")
+        print(f"    * {d}")
     print()
 
     # Collect files
@@ -91,7 +91,7 @@ def bulk_index():
     print()
 
     if not to_index:
-        print("  ✓ Everything is up to date!")
+        print("  Done: Everything is up to date!")
         return
 
     # Process in batches
@@ -100,23 +100,24 @@ def bulk_index():
     start_time = time.time()
 
     for i, fp in enumerate(to_index, 1):
+        print(f"  [{i}/{len(to_index)}] Processing: {fp.name}...", end="\r", flush=True)
         try:
             result = embed_file(str(fp))
             if result:
                 success += 1
-                print(f"  [{i}/{len(to_index)}] ✓ {fp.name}")
+                print(f"  [{i}/{len(to_index)}] [+] {fp.name}              ")
             else:
                 failed += 1
-                print(f"  [{i}/{len(to_index)}] ✗ {fp.name}")
+                print(f"  [{i}/{len(to_index)}] [-] {fp.name}              ")
         except DailyQuotaExceededError as e:
             print()
-            print("  ╔══════════════════════════════════════════════════════════╗")
-            print("  ║  ⚠  DAILY QUOTA EXHAUSTED — Stopping indexer            ║")
-            print("  ║                                                          ║")
-            print("  ║  Your Gemini API free-tier daily limit has been used up. ║")
-            print("  ║  Quota resets at midnight Pacific Time (~1:30 PM IST).   ║")
-            print("  ║  Run 'python bulk_index.py' again after the reset.       ║")
-            print("  ╚══════════════════════════════════════════════════════════╝")
+            print("  +----------------------------------------------------------+")
+            print("  |  !  DAILY QUOTA EXHAUSTED - Stopping indexer            |")
+            print("  |                                                          |")
+            print("  |  Your API quota has been used up.                        |")
+            print("  |  Quota resets at midnight Pacific Time.                  |")
+            print("  |  Run 'python bulk_index.py' again after the reset.       |")
+            print("  +----------------------------------------------------------+")
             print()
             print(f"  Progress saved: {success} indexed, {failed} failed, {len(to_index)-i} remaining.")
             logging.error(f"Bulk index aborted: {e}")
@@ -138,11 +139,11 @@ def bulk_index():
 
     elapsed = time.time() - start_time
     print()
-    print(f"  ════════════════════════════════════════")
+    print(f"  ========================================")
     print(f"  Done in {elapsed:.1f}s")
-    print(f"  ✓ Indexed: {success}")
-    print(f"  ✗ Failed:  {failed}")
-    print(f"  ════════════════════════════════════════")
+    print(f"  Success: {success}")
+    print(f"  Failed:  {failed}")
+    print(f"  ========================================")
 
 
 if __name__ == "__main__":

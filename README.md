@@ -1,20 +1,20 @@
 # Imprint — Semantic Memory Search for Windows 🧠
 
-Find any file on your computer by **meaning**, not just by its name. Powered by Gemini AI and integrated directly into Flow Launcher.
+Find any file on your computer by **meaning**, not just by its name. Powered by NVIDIA Nemotron (via OpenRouter) and integrated directly into Flow Launcher.
 
 ---
 
 ## What is this?
 Ever tried to find a photo from a "sunset at the beach" or a specific "meeting notes about project X" but can't remember what you named the file? 
 
-**Imprint** solves this by indexing your local files using semantic embeddings. It uses Gemini 2.0 Flash to "look" at your images, "read" your PDFs, and "listen" to your audio/video files to understand their content. All descriptions are then stored in a local vector database (ChromaDB) for instant searching via Flow Launcher.
+**Imprint** solves this by indexing your local files using semantic embeddings. It uses OpenRouter models to "look" at your images and "read" your PDFs/Text to understand their content. All descriptions are then stored in a local vector database (ChromaDB) for instant searching via Flow Launcher.
 
 ## Key Features
-*   **📷 Image & Video Understanding**: Gemini generates rich descriptions for your media files.
+*   **📷 Image Understanding**: OpenRouter vision models generate rich descriptions for your media files.
 *   **📄 Document Parsing**: Deep scanning of PDFs, Markdown, and Text files.
 *   **🔍 Semantic Search**: Search for "aesthetic mountain view" even if the file is named `IMG_9213.jpg`.
 *   **⚡ Real-time Updates**: Automatically indexes new files or changes as they happen.
-*   **🔒 Privacy First**: Your files stay on your machine. Only text descriptions are sent to the Gemini API for embedding.
+*   **🔒 Privacy First**: Your files stay on your machine. Only extracted data is sent to the OpenRouter API for embedding.
 *   **🔑 Secure**: API keys are stored in Windows Credential Manager, not in clear text files.
 
 ---
@@ -24,7 +24,7 @@ Ever tried to find a photo from a "sunset at the beach" or a specific "meeting n
 ### 1. The Essentials
 *   **Python 3.11+** installed and added to your system PATH.
 *   **Flow Launcher** (the UI for searching).
-*   **Gemini API Key**: Grab a free one at [Google AI Studio](https://aistudio.google.com/apikey).
+*   **OpenRouter API Key**: Grab one at [OpenRouter](https://openrouter.ai/).
 
 ### 2. Installation
 Clone the repo and install the Python dependencies:
@@ -82,10 +82,10 @@ Once it's running, just open Flow Launcher (`Alt + Space`) and use the **`im`** 
 
 ## How it works (The Dev stuff)
 1.  **Watcher**: Uses `watchdog` to monitor your folders.
-2.  **Embedder**: Uses Gemini 2.0 Flash to generate captions for images/video and text embeddings for everything else.
+2.  **Embedder**: Uses OpenRouter (NVIDIA Nemotron models) to generate captions for images and text embeddings for everything else.
 3.  **Local DB**: Stores everything in **ChromaDB** with a small SQLite cache for file tracking.
 4.  **Flow API**: A tiny FastAPI server that Flow Launcher queries for lightning-fast results.
 
 ---
 
-*Made with ❤️ for people who can't remember where they saved their stuff.*
+*Made with love for people who can't remember where they saved their stuff.*

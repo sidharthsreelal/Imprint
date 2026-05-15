@@ -18,7 +18,6 @@ ERROR_LOG = APP_DIR / "errors.log"
 
 # ─── Keyring constants ──────────────────────────────────────────────────────
 KEYRING_SERVICE = "Imprint-MemorySearch"
-KEYRING_USERNAME = "gemini_api_key"
 
 # ─── Supported extensions ───────────────────────────────────────────────────
 SUPPORTED_EXTENSIONS = {
@@ -33,48 +32,61 @@ MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
 
 # ─── API Key Management (Windows Credential Manager) ────────────────────────
 
-def get_api_key() -> str | None:
-    """Retrieve the Gemini API key from Windows Credential Manager."""
-    return keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+def get_api_key(provider: str | None = None) -> str | None:
+    """Retrieve the API key from Windows Credential Manager."""
+    provider = provider or get_embedding_provider()
+    if provider == "ollama": return None
+    return keyring.get_password(KEYRING_SERVICE, f"{provider}_api_key")
 
 
-def set_api_key(api_key: str) -> None:
-    """Store the Gemini API key in Windows Credential Manager."""
-    keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, api_key)
+def set_api_key(api_key: str, provider: str | None = None) -> None:
+    """Store the API key in Windows Credential Manager."""
+    provider = provider or get_embedding_provider()
+    if provider == "ollama": return
+    keyring.set_password(KEYRING_SERVICE, f"{provider}_api_key", api_key)
 
 
-def delete_api_key() -> None:
+def delete_api_key(provider: str | None = None) -> None:
     """Remove the stored API key."""
+    provider = provider or get_embedding_provider()
     try:
-        keyring.delete_password(KEYRING_SERVICE, KEYRING_USERNAME)
+        keyring.delete_password(KEYRING_SERVICE, f"{provider}_api_key")
     except keyring.errors.PasswordDeleteError:
         pass
 
 
-def ensure_api_key() -> str:
+def ensure_api_key() -> str | None:
     """
-    Ensure the API key is available.
+    Ensure the API key is available for the active provider.
     If not stored, prompt the user interactively.
-    Returns the API key string.
+    Returns the API key string, or None if not required (e.g., local Ollama).
     """
-    key = get_api_key()
+    provider = get_embedding_provider()
+    if provider == "ollama":
+        return None
+
+    key = get_api_key(provider)
     if key:
         return key
 
     print("=" * 60)
-    print("  IMPRINT — First-Time Setup")
+    print(f"  IMPRINT — First-Time Setup ({provider})")
     print("=" * 60)
     print()
-    print("  A Gemini API key is required for semantic embeddings.")
-    print("  Get one free at: https://aistudio.google.com/apikey")
+    print(f"  An API key is required for {provider}.")
+    if provider == "openrouter":
+        print("  Get one at: https://openrouter.ai/")
+    elif provider == "gemini":
+        print("  Get one at: https://aistudio.google.com/app/apikey")
     print()
-    key = input("  Enter your Gemini API key: ").strip()
+    
+    key = input(f"  Enter your {provider.capitalize()} API key: ").strip()
     if not key:
         print("  [ERROR] No API key provided. Exiting.")
         sys.exit(1)
 
-    set_api_key(key)
-    print("  ✓ API key stored securely in Windows Credential Manager.")
+    set_api_key(key, provider)
+    print("  [+] API key stored securely in Windows Credential Manager.")
     print()
     return key
 
@@ -87,6 +99,10 @@ def _default_config() -> dict:
         "batch_size": 14,
         "batch_pause_seconds": 65,
         "search_results_default": 12,
+        "embedding_provider": "openrouter",
+        "embedding_model": "nvidia/llama-nemotron-embed-vl-1b-v2:free",
+        "vision_model": "nvidia/nemotron-nano-12b-v2-vl:free",
+        "ollama_url": "http://127.0.0.1:11434"
     }
 
 
@@ -112,6 +128,44 @@ def save_config(cfg: dict) -> None:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
 
 
+def get_embedding_provider() -> str:
+    """Return the currently configured embedding provider."""
+    cfg = load_config()
+    return cfg.get("embedding_provider", "openrouter")
+
+
+def set_embedding_provider(provider: str) -> None:
+    """Update the provider and set up smart standard defaults for its models."""
+    if provider not in {"openrouter", "gemini", "ollama"}:
+        print(f"  [ERROR] Unsupported provider: {provider}")
+        return
+    cfg = load_config()
+    cfg["embedding_provider"] = provider
+    
+    if provider == "gemini":
+        cfg["embedding_model"] = "models/text-embedding-004"
+        cfg["vision_model"] = "gemini-1.5-flash"
+        cfg["batch_size"] = 14
+        cfg["batch_pause_seconds"] = 65
+    elif provider == "openrouter":
+        cfg["embedding_model"] = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+        cfg["vision_model"] = "nvidia/nemotron-nano-12b-v2-vl:free"
+        cfg["batch_size"] = 14
+        cfg["batch_pause_seconds"] = 65
+    elif provider == "ollama":
+        cfg["embedding_model"] = "nomic-embed-text"
+        cfg["vision_model"] = "llava"
+        cfg["batch_size"] = 50
+        cfg["batch_pause_seconds"] = 1
+
+    save_config(cfg)
+    print(f"  [+] Provider set to {provider}")
+    print(f"    Embedding model: {cfg['embedding_model']}")
+    print(f"    Vision model:    {cfg['vision_model']}")
+    print(f"    Batch Size:      {cfg['batch_size']}")
+    print(f"    Batch Pause:     {cfg['batch_pause_seconds']}s")
+
+
 def get_watch_dirs() -> list[Path]:
     """Return the list of directories the user wants to index/watch."""
     cfg = load_config()
@@ -129,7 +183,7 @@ def add_watch_dir(directory: str | Path) -> bool:
     if dir_str not in cfg["watch_dirs"]:
         cfg["watch_dirs"].append(dir_str)
         save_config(cfg)
-        print(f"  ✓ Added: {d}")
+        print(f"  [+] Added: {d}")
         return True
     else:
         print(f"  [INFO] Already in watch list: {d}")
@@ -143,7 +197,7 @@ def remove_watch_dir(directory: str | Path) -> bool:
     if d in cfg["watch_dirs"]:
         cfg["watch_dirs"].remove(d)
         save_config(cfg)
-        print(f"  ✓ Removed: {d}")
+        print(f"  [-] Removed: {d}")
         return True
     else:
         print(f"  [INFO] Not in watch list: {d}")
@@ -160,7 +214,7 @@ def list_watch_dirs() -> None:
     else:
         print("  Watch directories:")
         for i, d in enumerate(dirs, 1):
-            exists = "✓" if Path(d).is_dir() else "✗ (missing)"
+            exists = "[+]" if Path(d).is_dir() else "[-] (missing)"
             print(f"    {i}. {d}  {exists}")
 
 
@@ -178,7 +232,8 @@ Examples:
   python config.py add "D:\\Photos"       Add a directory to index
   python config.py add "%USERPROFILE%\\Documents"
   python config.py remove "D:\\Photos"    Remove a directory
-  python config.py set-key                Set/update your Gemini API key
+  python config.py set-provider gemini    Set provider (gemini|openrouter|ollama)
+  python config.py set-key                Set/update your active provider's API key
   python config.py delete-key             Remove your stored API key
         """,
     )
@@ -186,33 +241,42 @@ Examples:
 
     sub.add_parser("list", help="List watch directories")
 
+    p_provider = sub.add_parser("set-provider", help="Set the embedding provider (gemini, openrouter, ollama)")
+    p_provider.add_argument("provider", choices=["gemini", "openrouter", "ollama"], help="The provider to use")
+
     p_add = sub.add_parser("add", help="Add a watch directory")
     p_add.add_argument("path", help="Directory path to add")
 
     p_rm = sub.add_parser("remove", help="Remove a watch directory")
     p_rm.add_argument("path", help="Directory path to remove")
 
-    sub.add_parser("set-key", help="Set/update Gemini API key")
-    sub.add_parser("delete-key", help="Delete stored Gemini API key")
+    sub.add_parser("set-key", help="Set/update active provider's API key")
+    sub.add_parser("delete-key", help="Delete active provider's stored API key")
 
     args = parser.parse_args()
 
     if args.command == "list":
         list_watch_dirs()
+    elif args.command == "set-provider":
+        set_embedding_provider(args.provider)
     elif args.command == "add":
         add_watch_dir(args.path)
     elif args.command == "remove":
         remove_watch_dir(args.path)
     elif args.command == "set-key":
-        key = input("  Enter your Gemini API key: ").strip()
-        if key:
-            set_api_key(key)
-            print("  ✓ API key updated.")
+        provider = get_embedding_provider()
+        if provider == "ollama":
+            print("  [INFO] Ollama relies on your local daemon—no API key needed.")
         else:
-            print("  [ERROR] No key entered.")
+            key = input(f"  Enter your {provider.capitalize()} API key: ").strip()
+            if key:
+                set_api_key(key, provider)
+                print("  ✓ API key updated.")
+            else:
+                print("  [ERROR] No key entered.")
     elif args.command == "delete-key":
         delete_api_key()
-        print("  ✓ API key removed from Credential Manager.")
+        print("  [+] API key removed from Credential Manager.")
     else:
         parser.print_help()
 
