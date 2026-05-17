@@ -1,6 +1,7 @@
 """
 Imprint — Core Embedding & Search Engine
-Handles file embedding via OpenRouter API and semantic search via ChromaDB.
+Handles file embedding via configured AI providers and semantic search via ChromaDB.
+Supported providers: OpenRouter, Gemini, Ollama, Mistral
 """
 
 import base64
@@ -18,6 +19,8 @@ import chromadb
 
 from config import (
     CHROMA_DIR,
+    ENV_LOCAL_FILE,
+    ENV_LOCAL_PROVIDERS,
     ERROR_LOG,
     MAX_FILE_BYTES,
     SQLITE_CACHE,
@@ -26,6 +29,7 @@ from config import (
     get_api_key,
     get_embedding_provider,
     load_config,
+    _load_env_local,
 )
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
@@ -51,6 +55,51 @@ MIME_MAP: dict[str, str] = {
 
 # Text-only extensions (can be embedded directly as text)
 TEXT_EXTENSIONS = {".txt", ".md"}
+
+# ─── Provider resolution ─────────────────────────────────────────────────────
+
+def _resolve_active_provider() -> tuple[str, str | None, dict]:
+    """
+    Determine which provider, API key, and config to use for this call.
+
+    Logic:
+      1. Read MISTRAL_API_KEY from .env.local — this is always the default.
+      2. Read the configured provider from config.json.
+      3. If the configured provider is NOT mistral AND it has a valid key stored
+         (keyring for gemini/openrouter, local daemon for ollama), use it.
+      4. Otherwise fall back to mistral + .env.local key.
+
+    Returns (provider, api_key, cfg).
+    """
+    cfg = load_config()
+    configured_provider = cfg.get("embedding_provider", "mistral")
+
+    # Always check for a .env.local Mistral key as the baseline fallback
+    mistral_key = _load_env_local().get("MISTRAL_API_KEY", "").strip()
+    mistral_available = bool(mistral_key and mistral_key != "your-mistral-api-key-here")
+
+    # If the user explicitly configured a non-Mistral provider, honour it only
+    # when a valid key exists for it. "ollama" is valid without a key.
+    if configured_provider not in ("mistral", ""):
+        if configured_provider == "ollama":
+            return configured_provider, None, cfg
+        explicit_key = get_api_key(configured_provider)
+        if explicit_key:
+            return configured_provider, explicit_key, cfg
+
+    # Default: Mistral via .env.local
+    if not mistral_available:
+        raise RuntimeError(
+            "No API key found. Add MISTRAL_API_KEY to .env.local or run "
+            "'python config.py set-provider <provider>' and set a key."
+        )
+    # Inject mistral defaults into cfg if the stored config doesn't match
+    if cfg.get("embedding_provider") != "mistral":
+        cfg = dict(cfg)
+        cfg["embedding_provider"] = "mistral"
+        cfg["embedding_model"] = cfg.get("mistral_embed_model", "codestral-embed-2505")
+        cfg["vision_model"] = cfg.get("mistral_vision_model", "mistral-medium-latest")
+    return "mistral", mistral_key, cfg
 
 # ─── ChromaDB (lazy-initialized) ────────────────────────────────────────────
 _chroma_client: chromadb.ClientAPI | None = None
@@ -240,10 +289,8 @@ def _extract_pdf_text(filepath: Path) -> str | None:
 @with_retry()
 def _describe_image_for_embedding(filepath: Path) -> str | None:
     """Use AI to generate a textual description of an image for embedding."""
-    provider = get_embedding_provider()
-    cfg = load_config()
-    vision_model = cfg.get("vision_model", "")
-    api_key = ensure_api_key()
+    provider, api_key, cfg = _resolve_active_provider()
+    vision_model = cfg.get("vision_model", "mistral-medium-latest")
 
     with open(filepath, "rb") as f:
         image_data = f.read()
@@ -309,6 +356,27 @@ def _describe_image_for_embedding(filepath: Path) -> str | None:
             return None
         return response.json().get('response')
 
+    elif provider == "mistral":
+        # Mistral vision via OpenAI-compatible chat completions (base64 image_url)
+        image_url = f"data:{mime};base64,{base64_image}"
+        url = 'https://api.mistral.ai/v1/chat/completions'
+        headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
+        data = {
+            'model': vision_model,
+            'messages': [{
+                'role': 'user',
+                'content': [
+                    {'type': 'text', 'text': prompt},
+                    {'type': 'image_url', 'image_url': {'url': image_url}}
+                ]
+            }]
+        }
+        response = requests.post(url, headers=headers, json=data, timeout=120)
+        if response.status_code != 200:
+            logging.error(f"Image description failed: {response.text}")
+            return None
+        return response.json()['choices'][0]['message']['content']
+
     return None
 
 
@@ -321,14 +389,12 @@ def _describe_media_for_embedding(filepath: Path) -> str | None:
 
 @with_retry()
 def _get_embedding(text: str) -> list[float] | None:
-    """Get text embedding using the configured provider."""
+    """Get text embedding using the resolved provider."""
     if len(text) > 30000:
         text = text[:30000]
 
-    provider = get_embedding_provider()
-    cfg = load_config()
-    embed_model = cfg.get("embedding_model", "")
-    api_key = ensure_api_key()
+    provider, api_key, cfg = _resolve_active_provider()
+    embed_model = cfg.get("embedding_model", "codestral-embed-2505")
 
     if provider == "openrouter":
         url = 'https://openrouter.ai/api/v1/embeddings'
@@ -371,6 +437,18 @@ def _get_embedding(text: str) -> list[float] | None:
         result = response.json()
         if 'embedding' in result:
             return result['embedding']
+
+    elif provider == "mistral":
+        url = 'https://api.mistral.ai/v1/embeddings'
+        headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
+        data = {'model': embed_model, 'input': [text], 'encoding_format': 'float'}
+        response = requests.post(url, headers=headers, json=data, timeout=60)
+        if response.status_code != 200:
+            logging.error(f"Embedding failed: {response.text}")
+            return None
+        result = response.json()
+        if 'data' in result and len(result['data']) > 0:
+            return result['data'][0]['embedding']
 
     return None
 
