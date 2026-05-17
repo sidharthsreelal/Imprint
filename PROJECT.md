@@ -9,11 +9,11 @@
 ## State
 
 ### In Progress
-[Configuring Gemini, OpenRouter, and Ollama support completed; awaiting user testing or indexing]
+[Removed rate limit retry timeouts for Mistral models. A 429 now fails the file immediately instead of blocking the indexing queue.]
 
 ### Next
-1. Run `python config.py set-provider <provider>` to select preferred model.
-2. Resume `bulk_index.py` using preferred provider (e.g., local Ollama to bypass rate limits).
+1. Run `python bulk_index.py` to start indexing with Mistral.
+2. (Optional) `python config.py set-provider <provider>` to switch; Mistral fallback is always active via `.env.local`.
 
 ### Known Issues
 - OpenRouter imposes a strict 50 request-per-day limit on `free-models-per-day` for un-funded accounts. This restricts bulk indexing large directories.
@@ -25,6 +25,11 @@
 - [2026-04-13] Established tool-specific log headers: This agent uses `Antigravity`, while external tools (like Gemini CLI) continue using `Gemini CLI`.
 - [2026-04-13] Extended `config.py` and `embedder.py` to support dynamic routing between Gemini, OpenRouter, and Ollama.
 - [2026-04-13] Allowed dynamic naming of ChromaDB collections and SQLite caches based on active embedding models to prevent dimension mismatch errors across different providers.
+- [2026-05-15] Added Mistral as a 4th provider. Mistral API key is intentionally sourced from `.env.local` (not Windows Credential Manager) per user requirement.
+- [2026-05-15] Fixed: old `config.json` had `ollama` as provider, causing Ollama to be used even though Ollama wasn't running. Added `_resolve_active_provider()` to `embedder.py` — Mistral/.env.local is the always-on default; other providers only activate when the user explicitly sets them AND a valid key exists.
+- [2026-05-15] Added `python config.py reset` command to simplify deleting the vector database and SQLite cache.
+- [2026-05-15] Updated Mistral vision model default to `mistral-medium-latest` to provide better image descriptions.
+- [2026-05-15] Removed rate limit wait (429 exception) for Mistral endpoints. Rate-limited files now silently fail and get skipped rather than pausing the entire indexer.
 
 ---
 
