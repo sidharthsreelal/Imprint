@@ -15,6 +15,7 @@ index_cache.db
 errors.log
 config.json
 .env
+.env.local
 
 # IDE
 .vscode/
